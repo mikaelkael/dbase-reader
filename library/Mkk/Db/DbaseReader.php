@@ -39,12 +39,18 @@ class DbaseReader
      * @var array
      */
     protected $_data = null;
+    
+    /**
+     * enable fetchng deleted rows too
+     * @var array
+     */
+    protected $_fetchDeleted = false;
 
     /**
      * DbaseReader constructor: open the file and retrieve the headers
      * @param string $fileName Dbf filename
      */
-    public function  __construct($fileName)
+    public function  __construct($fileName, $fetchDeleted = false)
     {
         $this->_fileName = $fileName;
         if (!file_exists($fileName) || !\is_readable($fileName)) {
@@ -55,6 +61,8 @@ class DbaseReader
         $this->_headers = unpack("VrecordCount/vfirstRecord/vrecordLength",
                                  substr($buffer, 4, 8));
         $this->_closeFile();
+        
+        $this->_fetchDeleted = $fetchDeleted;
     }
 
     /**
@@ -129,12 +137,20 @@ class DbaseReader
         if (!$this->_data) {
             $this->getInfos();
             $this->_openFile();
-            fseek($this->_filePointer, $this->_headers['firstRecord'] + 1);
+            fseek($this->_filePointer, $this->_headers['firstRecord']);
             $records = array();
             for ($i = 1; $i <= $this->_headers['recordCount']; $i++) {
-                $buffer = fread($this->_filePointer, $this->_headers['recordLength']);
+                //First byte shows if the record is deleted
+                $deleted = fread($this->_filePointer, 1);
+                $buffer = fread($this->_filePointer, ($this->_headers['recordLength'] - 1) );
+                
                 $record = unpack($this->_unpackString, $buffer);
-                array_push($records, $record);
+                
+                //Deleted records marked with *
+                if( $this->_fetchDeleted || $deleted!='*' )
+                {
+                    array_push($records, $record);
+                }
             }
             $this->_data = $records;
             $this->_closeFile();
